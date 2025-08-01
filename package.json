@@ -9,13 +9,21 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "formidable": "^3.5.4",
+    "melipayamak-api": "^0.1.0",
+    "mongodb": "^6.18.0",
+    "mongoos": "^0.0.1-security",
+    "mongoose": "^8.16.5",
+    "next": "15.4.4",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.4.4"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3",
     "eslint": "^9",
-    "eslint-config-next": "15.4.4",
-    "@eslint/eslintrc": "^3"
+    "eslint-config-next": "15.4.4"
   }
 }
