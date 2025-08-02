@@ -45,7 +45,15 @@ export default async function handler(req, res) {
       const buffer = Buffer.from(data, "base64");
 
       const fileName = `${uuidv4()}.${ext}`;
-      const filePath = path.join("/home/x3drobotsazcom/domains/3drobotsaz.com/public_html/uploads", fileName);
+      const uploadDir = path.join(
+        "/home/x3drobotsazcom/domains/3drobotsaz.com/public_html/uploads"
+      );
+
+      // ساخت مسیر اگر وجود نداشت
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const filePath = path.join(uploadDir, fileName);
       fs.writeFileSync(filePath, buffer);
 
       const fileUrl = `${process.env.BACKEND_URL}/uploads/${fileName}`;
