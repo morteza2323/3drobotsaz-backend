@@ -3,6 +3,10 @@
 import clientPromise from "@/lib/mongodb";
 
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Credentials", true);
+  res.setHeader("Access-Control-Allow-Origin", "*"); // یا فقط http://localhost:5173
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method !== "DELETE") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
@@ -17,7 +21,9 @@ export default async function handler(req, res) {
     const client = await clientPromise;
     const db = client.db("robotsaz");
 
-    const result = await db.collection("products").deleteOne({ id: parseInt(id) });
+    const result = await db
+      .collection("products")
+      .deleteOne({ id: parseInt(id) });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({ message: "محصول یافت نشد." });

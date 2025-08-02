@@ -14,6 +14,10 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Credentials", true);
+  res.setHeader("Access-Control-Allow-Origin", "*"); // یا فقط http://localhost:5173
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
 
   const uploadDir = path.join(process.cwd(), "/public/uploads");
@@ -47,20 +51,18 @@ export default async function handler(req, res) {
     const videoPath = files.video?.[0]?.newFilename || "";
 
     const imageUrl = `${backendUrl}/uploads/${imagePath}`;
-    const videoUrl = videoPath
-      ? `${backendUrl}/uploads/${videoPath}`
-      : "";
+    const videoUrl = videoPath ? `${backendUrl}/uploads/${videoPath}` : "";
 
     try {
       const client = await clientPromise;
       const db = client.db("robotsaz");
-        const id = await getNextId("productId");
+      const id = await getNextId("productId");
 
       const newProduct = {
         id,
         title,
         description: shortDescription,
-        longDescription : fullDescription,
+        longDescription: fullDescription,
         image: imageUrl,
         video: videoUrl,
         createdAt: new Date(),
