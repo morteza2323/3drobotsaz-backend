@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       const buffer = Buffer.from(data, "base64");
 
       const fileName = `${uuidv4()}.${ext}`;
-      const filePath = path.join(process.cwd(), "public", "uploads", fileName);
+      const filePath = path.join("/home/x3drobotsazcom/domains/3drobotsaz.com/public_html/uploads", fileName);
       fs.writeFileSync(filePath, buffer);
 
       const fileUrl = `${process.env.BACKEND_URL}/uploads/${fileName}`;
