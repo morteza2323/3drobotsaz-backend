@@ -1,16 +1,30 @@
 // pages/api/products/deleteproduct.js
 
 import clientPromise from "@/lib/mongodb";
+import AWS from "aws-sdk";
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
+// تنظیم کلاینت S3 برای ابر آروان
+const s3 = new AWS.S3({
+  endpoint: process.env.ARVAN_ENDPOINT,
+  accessKeyId: process.env.ARVAN_ACCESS_KEY,
+  secretAccessKey: process.env.ARVAN_SECRET_KEY,
+  region: "ir-thr-at1",
+  signatureVersion: "v4",
+});
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
-  res.setHeader("Access-Control-Allow-Origin", "*"); // یا فقط 'https://3drobotsaz.com'
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
   }
+
   if (req.method !== "DELETE") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
@@ -25,13 +39,39 @@ export default async function handler(req, res) {
     const client = await clientPromise;
     const db = client.db("robotsaz");
 
-    const result = await db
-      .collection("products")
-      .deleteOne({ id: parseInt(id) });
+    // دریافت اطلاعات محصول قبل از حذف
+    const product = await db.collection("products").findOne({ id: parseInt(id) });
 
-    if (result.deletedCount === 0) {
+    if (!product) {
       return res.status(404).json({ message: "محصول یافت نشد." });
     }
+
+    // استخراج نام فایل از لینک
+    const extractFileName = (url) => {
+      if (!url) return null;
+      const parts = url.split("/");
+      return parts[parts.length - 1];
+    };
+
+    const imageKey = extractFileName(product.image);
+    const videoKey = extractFileName(product.video);
+
+    // حذف فایل‌ها از آروان
+    const deleteFromArvan = async (key) => {
+      if (!key) return;
+      await s3
+        .deleteObject({
+          Bucket: process.env.ARVAN_BUCKET,
+          Key: `products/${key}`,
+        })
+        .promise();
+    };
+
+    await deleteFromArvan(imageKey);
+    await deleteFromArvan(videoKey);
+
+    // حذف از دیتابیس
+    await db.collection("products").deleteOne({ id: parseInt(id) });
 
     return res.status(200).json({ message: "محصول با موفقیت حذف شد." });
   } catch (error) {
