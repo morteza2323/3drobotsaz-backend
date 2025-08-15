@@ -1,3 +1,4 @@
+// pages/api/presign-put-video.js
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuidv4 } from "uuid";
@@ -15,22 +16,37 @@ const s3 = new S3Client({
   forcePathStyle: true,
 });
 
-export default async function handler(req, res) {
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "https://3drobotsaz.com",
+  "https://www.3drobotsaz.com",
+  "https://api.3drobotsaz.com",
+];
+
+function setCORS(req, res) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://3drobotsaz.com");
+  }
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+}
+
+export default async function handler(req, res) {
+  setCORS(req, res);
+  if (req.method === "OPTIONS") return res.status(200).end(); // مهم برای preflight
+
   if (req.method !== "POST") return res.status(405).json({ message: "Method Not Allowed" });
 
   try {
     const { fileName, mime } = req.body || {};
-    if (!fileName || !mime) {
-      return res.status(400).json({ message: "fileName و mime لازم است." });
-    }
+    if (!fileName || !mime) return res.status(400).json({ message: "fileName و mime لازم است." });
 
     const ext = path.extname(fileName) || "";
-    // بدون productId
     const key = `products/unassigned/${uuidv4()}${ext}`;
 
     const command = new PutObjectCommand({
@@ -42,9 +58,8 @@ export default async function handler(req, res) {
     });
 
     const url = await getSignedUrl(s3, command, { expiresIn: 120 });
-
-    const publicUrlBase = (process.env.ARVAN_BUCKET_URL || "").replace(/\/+$/, "");
-    const publicUrl = `${publicUrlBase}/${key}`;
+    const base = (process.env.ARVAN_BUCKET_URL || "").replace(/\/+$/, "");
+    const publicUrl = `${base}/${key}`;
 
     return res.status(200).json({
       url,
