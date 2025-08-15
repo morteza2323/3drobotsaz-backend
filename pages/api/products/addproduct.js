@@ -1,67 +1,66 @@
+// pages/api/products/addproduct.js
 import formidable from "formidable";
 import fs from "fs";
 import path from "path";
-import AWS from "aws-sdk";
 import { v4 as uuidv4 } from "uuid";
 import { getNextId } from "@/lib/getnextid";
 import clientPromise from "@/lib/mongodb";
 import dotenv from "dotenv";
+
+// AWS SDK v3
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
 dotenv.config({ path: ".env.local" });
 
 // جلوگیری از پارس پیش‌فرض بدنه
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+export const config = { api: { bodyParser: false } };
 
-// تنظیم S3 برای ابر آروان
-const s3 = new AWS.S3({
-  endpoint: process.env.ARVAN_ENDPOINT,
-  accessKeyId: process.env.ARVAN_ACCESS_KEY,
-  secretAccessKey: process.env.ARVAN_SECRET_KEY,
+// S3 (Arvan) Client
+const s3 = new S3Client({
   region: "ir-thr-at1",
-  signatureVersion: "v4",
+  endpoint: process.env.ARVAN_ENDPOINT, // مثل https://s3.ir-thr-at1.arvanstorage.com
+  credentials: {
+    accessKeyId: process.env.ARVAN_ACCESS_KEY,
+    secretAccessKey: process.env.ARVAN_SECRET_KEY,
+  },
+  forcePathStyle: true,
 });
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Credentials", true);
+  // CORS
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).end("Method Not Allowed");
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
 
   const form = formidable({
     keepExtensions: true,
-    maxFileSize: 10 * 1024 * 1024, // 10MB
-    filter: (part) =>
-      part.mimetype?.startsWith("image/") || part.mimetype?.startsWith("video/"),
+    maxFileSize: 15 * 1024 * 1024, // فقط برای عکس (قابل تغییر)
+    filter: (part) => part.mimetype?.startsWith("image/") || part.name === "videoUrl",
   });
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error("خطا در آپلود:", err);
+      console.error("خطا در دریافت فایل‌ها:", err);
       return res.status(500).json({ message: "خطا در پردازش فایل‌ها" });
     }
 
     // فیلدهای فارسی
-    const title = fields.title?.[0] || "";
-    const shortDescription = fields.shortDescription?.[0] || "";
-    const fullDescription = fields.fullDescription?.[0] || "";
+    const title = (fields.title?.[0] || "").trim();
+    const shortDescription = (fields.shortDescription?.[0] || "").trim();
+    const fullDescription = (fields.fullDescription?.[0] || "").trim();
 
-    // فیلدهای انگلیسی (حتی اگر نیان، مقدار خالی می‌گیرن)
-    const titleEn = fields.titleEn?.[0] || "";
-    const descriptionEn = fields.descriptionEn?.[0] || "";
-    const longDescriptionEn = fields.longDescriptionEn?.[0] || "";
+    // فیلدهای انگلیسی (اختیاری)
+    const titleEn = (fields.titleEn?.[0] || "").trim();
+    const descriptionEn = (fields.descriptionEn?.[0] || "").trim();
+    const longDescriptionEn = (fields.longDescriptionEn?.[0] || "").trim();
 
-    if (!title || !shortDescription || !files.image) {
+    // لینک ویدیو که از فرانت می‌آد (آپلود مستقیم به آروان)
+    const videoUrlFromFront = (fields.videoUrl?.[0] || "").trim();
+
+    if (!title || !shortDescription || !files.image?.[0]) {
       return res.status(400).json({ message: "فیلدهای اجباری پر نشده‌اند." });
     }
 
@@ -70,26 +69,31 @@ export default async function handler(req, res) {
       const db = client.db("robotsaz");
       const id = await getNextId("productId");
 
-      // تابع آپلود به آروان
-      const uploadToArvan = async (file) => {
-        const fileExt = path.extname(file.originalFilename || "");
-        const fileName = `products/product-${id}-${uuidv4()}${fileExt}`;
-        const fileContent = fs.readFileSync(file.filepath);
+      // آپلود عکس به آروان (v3)
+      const uploadImageToArvan = async (file) => {
+        const ext = path.extname(file.originalFilename || "");
+        const key = `products/product-${id}-${uuidv4()}${ext}`;
+        const body = await fs.promises.readFile(file.filepath);
 
-        await s3
-          .putObject({
+        await s3.send(
+          new PutObjectCommand({
             Bucket: process.env.ARVAN_BUCKET,
-            Key: fileName,
-            Body: fileContent,
+            Key: key,
+            Body: body,
             ACL: "public-read",
+            ContentType: file.mimetype || undefined,
+            CacheControl: "public, max-age=31536000, immutable",
           })
-          .promise();
+        );
 
-        return `${process.env.ARVAN_BUCKET_URL}/${fileName}`;
+        const base = (process.env.ARVAN_BUCKET_URL || "").replace(/\/+$/, "");
+        return `${base}/${key}`;
       };
 
-      const imageUrl = await uploadToArvan(files.image[0]);
-      const videoUrl = files.video ? await uploadToArvan(files.video[0]) : "";
+      const imageUrl = await uploadImageToArvan(files.image[0]);
+
+      // ویدیو را دیگر در بک‌اند آپلود نمی‌کنیم؛ فقط لینک ذخیره می‌شود
+      const videoUrl = videoUrlFromFront || "";
 
       const newProduct = {
         id,
@@ -110,9 +114,9 @@ export default async function handler(req, res) {
         message: "محصول با موفقیت اضافه شد.",
         product: newProduct,
       });
-    } catch (err) {
-      console.error("خطا در ذخیره محصول:", err);
-      return res.status(500).json({ message: "خطا در سرور" });
+    } catch (e) {
+      console.error("خطا در ذخیره محصول:", e);
+      return res.status(500).json({ message: "خطای سرور" });
     }
   });
 }
